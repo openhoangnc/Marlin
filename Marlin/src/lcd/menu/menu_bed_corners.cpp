@@ -83,6 +83,9 @@ static inline void _lcd_level_bed_corners_homing() {
         , _lcd_goto_next_corner
         , []{
             TERN_(HAS_LEVELING, set_bed_leveling_enabled(leveling_was_active));
+            line_to_z(LEVEL_CORNERS_Z_HOP);
+            current_position.set(0, 0);
+            line_to_current_position(manual_feedrate_mm_s.x);
             ui.goto_previous_screen_no_defer();
           }
         , GET_TEXT(TERN(LEVEL_CENTER_TOO, MSG_LEVEL_BED_NEXT_POINT, MSG_NEXT_CORNER))

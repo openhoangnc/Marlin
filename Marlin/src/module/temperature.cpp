@@ -3076,7 +3076,7 @@ void Temperature::tick() {
 
   #if ENABLED(AUTO_REPORT_TEMPERATURES)
 
-    uint8_t Temperature::auto_report_temp_interval;
+    uint8_t Temperature::auto_report_temp_interval = 2;
     millis_t Temperature::next_temp_report_ms;
 
     void Temperature::auto_report_temperatures() {

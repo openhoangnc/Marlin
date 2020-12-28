@@ -352,23 +352,27 @@ void CardReader::ls() {
 //
 // Echo the DOS 8.3 filename (and long filename, if any)
 //
-void CardReader::printFilename() {
-  if (file.isOpen()) {
-    char dosFilename[FILENAME_LENGTH];
-    file.getDosName(dosFilename);
-    SERIAL_ECHO(dosFilename);
-    #if ENABLED(LONG_FILENAME_HOST_SUPPORT)
-      selectFileByName(dosFilename);
-      if (longFilename[0]) {
-        SERIAL_ECHO(' ');
-        SERIAL_ECHO(longFilename);
-      }
-    #endif
-  }
-  else
-    SERIAL_ECHOPGM("(no file)");
+void CardReader::printFilename(const bool forceReport) {
+  auto isFileOpen = file.isOpen();
+  if (forceReport || isFileOpen) {
+    SERIAL_ECHOPGM("Current file: ");
+    if (isFileOpen) {
+      char dosFilename[FILENAME_LENGTH];
+      file.getDosName(dosFilename);
+      SERIAL_ECHO(dosFilename);
+      #if ENABLED(LONG_FILENAME_HOST_SUPPORT)
+        selectFileByName(dosFilename);
+        if (longFilename[0]) {
+          SERIAL_ECHO(' ');
+          SERIAL_ECHO(longFilename);
+        }
+      #endif
+    }
+    else
+      SERIAL_ECHOPGM("(no file)");
 
-  SERIAL_EOL();
+    SERIAL_EOL();
+  }
 }
 
 void CardReader::mount() {
@@ -1172,7 +1176,7 @@ void CardReader::fileHasFinished() {
 }
 
 #if ENABLED(AUTO_REPORT_SD_STATUS)
-  uint8_t CardReader::auto_report_sd_interval = 0;
+  uint8_t CardReader::auto_report_sd_interval = 2;
   millis_t CardReader::next_sd_report_ms;
   #if HAS_MULTI_SERIAL
     int8_t CardReader::auto_report_port;
@@ -1182,7 +1186,8 @@ void CardReader::fileHasFinished() {
     millis_t current_ms = millis();
     if (auto_report_sd_interval && ELAPSED(current_ms, next_sd_report_ms)) {
       next_sd_report_ms = current_ms + 1000UL * auto_report_sd_interval;
-      PORT_REDIRECT(auto_report_port);
+      PORT_REDIRECT(SERIAL_BOTH);
+      printFilename(false);
       report_status();
     }
   }

@@ -122,7 +122,7 @@ public:
   static void openAndPrintFile(const char *name);   // (working directory)
   static void fileHasFinished();
   static void getAbsFilename(char *dst);
-  static void printFilename();
+  static void printFilename(const bool forceReport=true);
   static void startFileprint();
   static void endFilePrint(TERN_(SD_RESORT, const bool re_sort=false));
   static void report_status();

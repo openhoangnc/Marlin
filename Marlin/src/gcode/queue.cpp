@@ -63,6 +63,14 @@ long GCodeQueue::last_N[NUM_SERIAL];
  * the main loop. The gcode.process_next_command method parses the next
  * command and hands off execution to individual handler functions.
  */
+#if ENABLED(SDSUPPORT)
+uint8_t GCodeQueue::length_sd = 0,  // Count of commands in the queue of sd card
+        GCodeQueue::index_r_sd = 0, // Ring buffer read position of sd card
+        GCodeQueue::index_w_sd = 0; // Ring buffer write position of sd card
+
+char GCodeQueue::command_buffer_sd[BUFSIZE][MAX_CMD_SIZE]; // sd card
+#endif
+
 uint8_t GCodeQueue::length = 0,  // Count of commands in the queue
         GCodeQueue::index_r = 0, // Ring buffer read position
         GCodeQueue::index_w = 0; // Ring buffer write position
@@ -82,6 +90,10 @@ char GCodeQueue::command_buffer[BUFSIZE][MAX_CMD_SIZE];
 
 // Number of characters read in the current line of serial input
 static int serial_count[NUM_SERIAL] = { 0 };
+
+#if ENABLED(SDSUPPORT)
+bool send_ok_sd[BUFSIZE];
+#endif
 
 bool send_ok[BUFSIZE];
 
@@ -105,15 +117,30 @@ GCodeQueue::GCodeQueue() {
  * Check whether there are any commands yet to be executed
  */
 bool GCodeQueue::has_commands_queued() {
-  return queue.length || injected_commands_P || injected_commands[0];
+  return TERN_(SDSUPPORT, queue.length_sd ||) queue.length || injected_commands_P || injected_commands[0];
 }
 
 /**
  * Clear the Marlin command queue
  */
 void GCodeQueue::clear() {
+  #if ENABLED(SDSUPPORT)
+  index_r_sd = index_w_sd = length_sd = 0;
+  #endif
   index_r = index_w = length = 0;
 }
+
+#if ENABLED(SDSUPPORT)
+/**
+ * Once a new command is in the ring buffer, call this to commit it
+ */
+void GCodeQueue::_commit_command_sd(bool say_ok) {
+  send_ok_sd[index_w_sd] = say_ok;
+  TERN_(POWER_LOSS_RECOVERY, recovery.commit_sdpos(index_w_sd));
+  if (++index_w_sd >= BUFSIZE) index_w_sd = 0;
+  length_sd++;
+}
+#endif
 
 /**
  * Once a new command is in the ring buffer, call this to commit it
@@ -129,6 +156,20 @@ void GCodeQueue::_commit_command(bool say_ok
   if (++index_w >= BUFSIZE) index_w = 0;
   length++;
 }
+
+#if ENABLED(SDSUPPORT)
+/**
+ * Copy a command from RAM into the sd command buffer.
+ * Return true if the command was successfully added.
+ * Return false for a full buffer, or if the 'command' is a comment.
+ */
+bool GCodeQueue::_enqueue_sd(const char* cmd, bool say_ok/*=false*/) {
+  if (*cmd == ';' || length_sd >= BUFSIZE) return false;
+  strcpy(command_buffer_sd[index_w_sd], cmd);
+  _commit_command_sd(say_ok);
+  return true;
+}
+#endif
 
 /**
  * Copy a command from RAM into the main command buffer.
@@ -563,7 +604,7 @@ void GCodeQueue::get_serial_commands() {
 
     int sd_count = 0;
     bool card_eof = card.eof();
-    while (length < BUFSIZE && !card_eof) {
+    while (length_sd < BUFSIZE && !card_eof) {
       const int16_t n = card.get();
       card_eof = card.eof();
       if (n < 0 && !card_eof) { SERIAL_ERROR_MSG(STR_SD_ERR_READ); continue; }
@@ -574,7 +615,7 @@ void GCodeQueue::get_serial_commands() {
 
         // Reset stream state, terminate the buffer, and commit a non-empty command
         if (!is_eol && sd_count) ++sd_count;          // End of file with no newline
-        if (!process_line_done(sd_input_state, command_buffer[index_w], sd_count)) {
+        if (!process_line_done(sd_input_state, command_buffer_sd[index_w_sd], sd_count)) {
           _commit_command(false);
           #if ENABLED(POWER_LOSS_RECOVERY)
             recovery.cmd_sdpos = card.getIndex();     // Prime for the NEXT _commit_command
@@ -584,7 +625,7 @@ void GCodeQueue::get_serial_commands() {
         if (card_eof) card.fileHasFinished();         // Handle end of file reached
       }
       else
-        process_stream_char(sd_char, sd_input_state, command_buffer[index_w], sd_count);
+        process_stream_char(sd_char, sd_input_state, command_buffer_sd[index_w_sd], sd_count);
 
     }
   }

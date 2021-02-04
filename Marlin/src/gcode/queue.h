@@ -47,6 +47,13 @@ public:
    * the main loop. The gcode.process_next_command method parses the next
    * command and hands off execution to individual handler functions.
    */
+#if ENABLED(SDSUPPORT)
+  static uint8_t length_sd,  // Count of commands in the queue of sd card
+                 index_r_sd; // Ring buffer read position of sd card
+
+  static char command_buffer_sd[BUFSIZE][MAX_CMD_SIZE];
+#endif
+
   static uint8_t length,  // Count of commands in the queue
                  index_r; // Ring buffer read position
 
@@ -149,12 +156,20 @@ public:
 
 private:
 
+  #if ENABLED(SDSUPPORT)
+  static uint8_t index_w_sd;  // Ring buffer write position of sd card
+  #endif
   static uint8_t index_w;  // Ring buffer write position
 
   static void get_serial_commands();
 
   #if ENABLED(SDSUPPORT)
     static void get_sdcard_commands();
+  #endif
+
+  #if ENABLED(SDSUPPORT)
+  static void _commit_command_sd(bool say_ok);
+  static bool _enqueue_sd(const char* cmd, bool say_ok=false);
   #endif
 
   static void _commit_command(bool say_ok

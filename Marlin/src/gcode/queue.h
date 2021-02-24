@@ -54,10 +54,10 @@ public:
   static char command_buffer_sd[BUFSIZE][MAX_CMD_SIZE];
 #endif
 
-  static uint8_t length,  // Count of commands in the queue
-                 index_r; // Ring buffer read position
+  static uint8_t length_serial,  // Count of commands in the queue
+                 index_r_serial; // Ring buffer read position
 
-  static char command_buffer[BUFSIZE][MAX_CMD_SIZE];
+  static char command_buffer_serial[BUFSIZE][MAX_CMD_SIZE];
 
   /**
    * The port that the command was received on
@@ -159,7 +159,7 @@ private:
   #if ENABLED(SDSUPPORT)
   static uint8_t index_w_sd;  // Ring buffer write position of sd card
   #endif
-  static uint8_t index_w;  // Ring buffer write position
+  static uint8_t index_w_serial;  // Ring buffer write position
 
   static void get_serial_commands();
 
@@ -172,13 +172,13 @@ private:
   static bool _enqueue_sd(const char* cmd, bool say_ok=false);
   #endif
 
-  static void _commit_command(bool say_ok
+  static void _commit_command_serial(bool say_ok
     #if HAS_MULTI_SERIAL
       , int16_t p=-1
     #endif
   );
 
-  static bool _enqueue(const char* cmd, bool say_ok=false
+  static bool _enqueue_serial(const char* cmd, bool say_ok=false
     #if HAS_MULTI_SERIAL
       , int16_t p=-1
     #endif

@@ -948,20 +948,34 @@ void GcodeSuite::process_parsed_command(const bool no_ok/*=false*/) {
  * This is called from the main loop()
  */
 void GcodeSuite::process_next_command() {
-  char * const current_command = queue.command_buffer[queue.index_r];
+  char * current_command;
 
-  PORT_REDIRECT(queue.port[queue.index_r]);
-
+  #if ENABLED(SDSUPPORT)
+  if (queue.length_serial) {
+  #endif
+    current_command = queue.command_buffer_serial[queue.index_r_serial];
+    PORT_REDIRECT(queue.port[queue.index_r_serial]);
+  #if ENABLED(SDSUPPORT)
+  } else {
+    current_command = queue.command_buffer_sd[queue.index_r_sd];
+  }
+  #endif
+   
   #if ENABLED(POWER_LOSS_RECOVERY)
-    recovery.queue_index_r = queue.index_r;
+    if (queue.length_sd)
+      recovery.queue_index_r = queue.index_r_sd;
   #endif
 
   if (DEBUGGING(ECHO)) {
     SERIAL_ECHO_START();
     SERIAL_ECHOLN(current_command);
     #if ENABLED(M100_FREE_MEMORY_DUMPER)
-      SERIAL_ECHOPAIR("slot:", queue.index_r);
-      M100_dump_routine(PSTR("   Command Queue:"), &queue.command_buffer[0][0], &queue.command_buffer[BUFSIZE - 1][MAX_CMD_SIZE - 1]);
+      SERIAL_ECHOPAIR("slot:", queue.index_r_serial);
+      M100_dump_routine(PSTR("   Command Queue:"), &queue.command_buffer_serial[0][0], &queue.command_buffer_serial[BUFSIZE - 1][MAX_CMD_SIZE - 1]);
+      #if ENABLED(SDSUPPORT)
+      SERIAL_ECHOPAIR("SD slot:", queue.index_r_sd);
+      M100_dump_routine(PSTR("   SD Command Queue:"), &queue.command_buffer_sd[0][0], &queue.command_buffer_sd[BUFSIZE - 1][MAX_CMD_SIZE - 1]);
+      #endif
     #endif
   }
 

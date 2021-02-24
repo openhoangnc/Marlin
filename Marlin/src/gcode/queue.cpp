@@ -71,11 +71,11 @@ uint8_t GCodeQueue::length_sd = 0,  // Count of commands in the queue of sd card
 char GCodeQueue::command_buffer_sd[BUFSIZE][MAX_CMD_SIZE]; // sd card
 #endif
 
-uint8_t GCodeQueue::length = 0,  // Count of commands in the queue
-        GCodeQueue::index_r = 0, // Ring buffer read position
-        GCodeQueue::index_w = 0; // Ring buffer write position
+uint8_t GCodeQueue::length_serial = 0,  // Count of commands in the queue
+        GCodeQueue::index_r_serial = 0, // Ring buffer read position
+        GCodeQueue::index_w_serial = 0; // Ring buffer write position
 
-char GCodeQueue::command_buffer[BUFSIZE][MAX_CMD_SIZE];
+char GCodeQueue::command_buffer_serial[BUFSIZE][MAX_CMD_SIZE];
 
 /*
  * The port that the command was received on
@@ -95,7 +95,7 @@ static int serial_count[NUM_SERIAL] = { 0 };
 bool send_ok_sd[BUFSIZE];
 #endif
 
-bool send_ok[BUFSIZE];
+bool send_ok_serial[BUFSIZE];
 
 /**
  * Next Injected PROGMEM Command pointer. (nullptr == empty)
@@ -110,14 +110,18 @@ char GCodeQueue::injected_commands[64]; // = { 0 }
 
 GCodeQueue::GCodeQueue() {
   // Send "ok" after commands by default
-  LOOP_L_N(i, COUNT(send_ok)) send_ok[i] = true;
+  #if ENABLED(SDSUPPORT)
+  LOOP_L_N(i, COUNT(send_ok_sd)) send_ok_sd[i] = true;
+  #endif
+
+  LOOP_L_N(i, COUNT(send_ok_serial)) send_ok_serial[i] = true;
 }
 
 /**
  * Check whether there are any commands yet to be executed
  */
 bool GCodeQueue::has_commands_queued() {
-  return TERN_(SDSUPPORT, queue.length_sd ||) queue.length || injected_commands_P || injected_commands[0];
+  return TERN_(SDSUPPORT, queue.length_sd ||) queue.length_serial || injected_commands_P || injected_commands[0];
 }
 
 /**
@@ -127,7 +131,7 @@ void GCodeQueue::clear() {
   #if ENABLED(SDSUPPORT)
   index_r_sd = index_w_sd = length_sd = 0;
   #endif
-  index_r = index_w = length = 0;
+  index_r_serial = index_w_serial = length_serial = 0;
 }
 
 #if ENABLED(SDSUPPORT)
@@ -145,16 +149,16 @@ void GCodeQueue::_commit_command_sd(bool say_ok) {
 /**
  * Once a new command is in the ring buffer, call this to commit it
  */
-void GCodeQueue::_commit_command(bool say_ok
+void GCodeQueue::_commit_command_serial(bool say_ok
   #if HAS_MULTI_SERIAL
     , int16_t p/*=-1*/
   #endif
 ) {
-  send_ok[index_w] = say_ok;
+  send_ok_serial[index_w_serial] = say_ok;
   TERN_(HAS_MULTI_SERIAL, port[index_w] = p);
   TERN_(POWER_LOSS_RECOVERY, recovery.commit_sdpos(index_w));
-  if (++index_w >= BUFSIZE) index_w = 0;
-  length++;
+  if (++index_w_serial >= BUFSIZE) index_w_serial = 0;
+  length_serial++;
 }
 
 #if ENABLED(SDSUPPORT)
@@ -176,14 +180,14 @@ bool GCodeQueue::_enqueue_sd(const char* cmd, bool say_ok/*=false*/) {
  * Return true if the command was successfully added.
  * Return false for a full buffer, or if the 'command' is a comment.
  */
-bool GCodeQueue::_enqueue(const char* cmd, bool say_ok/*=false*/
+bool GCodeQueue::_enqueue_serial(const char* cmd, bool say_ok/*=false*/
   #if HAS_MULTI_SERIAL
     , int16_t pn/*=-1*/
   #endif
 ) {
-  if (*cmd == ';' || length >= BUFSIZE) return false;
-  strcpy(command_buffer[index_w], cmd);
-  _commit_command(say_ok
+  if (*cmd == ';' || length_serial >= BUFSIZE) return false;
+  strcpy(command_buffer_serial[index_w_serial], cmd);
+  _commit_command_serial(say_ok
     #if HAS_MULTI_SERIAL
       , pn
     #endif
@@ -205,7 +209,7 @@ bool GCodeQueue::enqueue_one(const char* cmd) {
 
   if (*cmd == 0 || ISEOL(*cmd)) return true;
 
-  if (_enqueue(cmd)) {
+  if (_enqueue_serial(cmd)) {
     SERIAL_ECHO_MSG(STR_ENQUEUEING, cmd, "\"");
     return true;
   }
@@ -283,7 +287,7 @@ bool GCodeQueue::enqueue_one_P(PGM_P const pgcode) {
   char cmd[i + 1];
   memcpy_P(cmd, p, i);
   cmd[i] = '\0';
-  return _enqueue(cmd);
+  return _enqueue_serial(cmd);
 }
 
 /**
@@ -320,10 +324,10 @@ void GCodeQueue::ok_to_send() {
     if (pn < 0) return;
     PORT_REDIRECT(pn);                    // Reply to the serial port that sent the command
   #endif
-  if (!send_ok[index_r]) return;
+  if (!send_ok_serial[index_r_serial]) return;
   SERIAL_ECHOPGM(STR_OK);
   #if ENABLED(ADVANCED_OK)
-    char* p = command_buffer[index_r];
+    char* p = command_buffer_serial[index_r_serial];
     if (*p == 'N') {
       SERIAL_ECHO(' ');
       SERIAL_ECHO(*p++);
@@ -331,7 +335,7 @@ void GCodeQueue::ok_to_send() {
         SERIAL_ECHO(*p++);
     }
     SERIAL_ECHOPAIR_P(SP_P_STR, int(planner.moves_free()),
-                      SP_B_STR, int(BUFSIZE - length));
+                      SP_B_STR, int(BUFSIZE - length_serial));
   #endif
   SERIAL_EOL();
 }
@@ -478,7 +482,7 @@ void GCodeQueue::get_serial_commands() {
   #if NO_TIMEOUTS > 0
     static millis_t last_command_time = 0;
     const millis_t ms = millis();
-    if (length == 0 && !serial_data_available() && ELAPSED(ms, last_command_time + NO_TIMEOUTS)) {
+    if (length_serial == 0 && !serial_data_available() && ELAPSED(ms, last_command_time + NO_TIMEOUTS)) {
       SERIAL_ECHOLNPGM(STR_WAIT);
       last_command_time = ms;
     }
@@ -487,7 +491,7 @@ void GCodeQueue::get_serial_commands() {
   /**
    * Loop while serial characters are incoming and the queue is not full
    */
-  while (length < BUFSIZE && serial_data_available()) {
+  while (length_serial < BUFSIZE && serial_data_available()) {
     LOOP_L_N(i, NUM_SERIAL) {
 
       const int c = read_serial(i);
@@ -576,7 +580,7 @@ void GCodeQueue::get_serial_commands() {
         #endif
 
         // Add the command to the queue
-        _enqueue(serial_line_buffer[i], true
+        _enqueue_serial(serial_line_buffer[i], true
           #if HAS_MULTI_SERIAL
             , i
           #endif
@@ -616,7 +620,7 @@ void GCodeQueue::get_serial_commands() {
         // Reset stream state, terminate the buffer, and commit a non-empty command
         if (!is_eol && sd_count) ++sd_count;          // End of file with no newline
         if (!process_line_done(sd_input_state, command_buffer_sd[index_w_sd], sd_count)) {
-          _commit_command(false);
+          _commit_command_sd(false);
           #if ENABLED(POWER_LOSS_RECOVERY)
             recovery.cmd_sdpos = card.getIndex();     // Prime for the NEXT _commit_command
           #endif
@@ -654,12 +658,12 @@ void GCodeQueue::advance() {
   if (process_injected_command_P() || process_injected_command()) return;
 
   // Return if the G-code buffer is empty
-  if (!length) return;
+  if (!length_serial TERN_(SDSUPPORT, && !length_sd)) return;
 
   #if ENABLED(SDSUPPORT)
 
     if (card.flag.saving) {
-      char* command = command_buffer[index_r];
+      char* command = command_buffer_serial[index_r_serial];
       if (is_M29(command)) {
         // M29 closes the file
         card.closefile();
@@ -695,7 +699,12 @@ void GCodeQueue::advance() {
   #endif // SDSUPPORT
 
   // The queue may be reset by a command handler or by code invoked by idle() within a handler
-  --length;
-  if (++index_r >= BUFSIZE) index_r = 0;
-
+  if (length_serial > 0) {
+    --length_serial;
+    if (++index_r_serial >= BUFSIZE) index_r_serial = 0;
+  } else {
+    --length_sd;
+    if (++index_r_sd >= BUFSIZE) index_r_sd = 0;
+  }
+  
 }

@@ -487,7 +487,8 @@ void startOrResumeJob() {
  */
 inline void manage_inactivity(const bool ignore_stepper_queue=false) {
 
-  if (queue.length < BUFSIZE) queue.get_available_commands();
+  if (queue.length_serial < BUFSIZE TERN_(SDSUPPORT, || queue.length_sd < BUFSIZE))
+    queue.get_available_commands();
 
   const millis_t ms = millis();
 
